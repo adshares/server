@@ -22,6 +22,7 @@ namespace Adshares\Adserver\Http\Controllers\Manager;
 
 use Adshares\Adserver\Http\Controller;
 use Adshares\Adserver\Http\Requests\Campaign\TargetingProcessor;
+use Adshares\Adserver\Http\Requests\GenerateTextAds;
 use Adshares\Adserver\Http\Utils;
 use Adshares\Adserver\Jobs\ClassifyCampaign;
 use Adshares\Adserver\Models\Banner;
@@ -35,13 +36,17 @@ use Adshares\Adserver\Models\Notification;
 use Adshares\Adserver\Models\User;
 use Adshares\Adserver\Repository\CampaignRepository;
 use Adshares\Adserver\Repository\Common\ClassifierExternalRepository;
+use Adshares\Adserver\Services\Advertiser\Dto\TextAdSource;
+use Adshares\Adserver\Services\Advertiser\TextAdsGenerator;
 use Adshares\Adserver\Services\Demand\BannerClassificationCreator;
 use Adshares\Adserver\Uploader\Factory;
 use Adshares\Adserver\Uploader\Image\ImageUploader;
 use Adshares\Adserver\Uploader\UploadedFile;
+use Adshares\Adserver\Uploader\Zip\UploadedZip;
 use Adshares\Adserver\Uploader\Zip\ZipUploader;
 use Adshares\Common\Application\Service\ConfigurationRepository;
 use Adshares\Common\Application\Service\Exception\ExchangeRateNotAvailableException;
+use Adshares\Common\Domain\ValueObject\SecureUrl;
 use Adshares\Common\Infrastructure\Service\ExchangeRateReader;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
@@ -51,17 +56,22 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Response as ResponseFacade;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 use RuntimeException;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
+use ZipArchive;
 use function response;
 use function strrpos;
 
 class CampaignsController extends Controller
 {
+    private const ZIP_DISK = 'banners';
+
     /** @var CampaignRepository */
     private $campaignRepository;
 
@@ -107,6 +117,33 @@ class CampaignsController extends Controller
         } catch (RuntimeException $exception) {
             throw new BadRequestHttpException($exception->getMessage());
         }
+    }
+
+    public function uploadTextAd(GenerateTextAds $request): Response
+    {
+        $generator = new TextAdsGenerator($request->getSource());
+        $zip = new ZipArchive();
+        $result = [];
+
+        foreach ($request->getSizes() as $size) {
+            $name = Str::random(40).'.zip';
+            $path = Storage::disk(self::ZIP_DISK)->path($name);
+
+            if (true !== $zip->open($path, ZipArchive::CREATE|ZipArchive::EXCL)) {
+                return new Response('Cannot generate an ad', Response::HTTP_INTERNAL_SERVER_ERROR);
+            }
+
+            $content = $generator->generate($size);
+            $zip->addFromString('index.html', $content);
+            $zip->close();
+
+            $previewUrl = new SecureUrl(
+                route('app.campaigns.upload_preview', ['type' => ZipUploader::ZIP_FILE, 'name' => $name])
+            );
+            $result[$size] = (new UploadedZip($name, $previewUrl->toString()))->toArray();
+        }
+
+        return new Response($result, Response::HTTP_OK);
     }
 
     public function preview($bannerPublicId): Response
@@ -202,6 +239,8 @@ class CampaignsController extends Controller
             $size = Banner::size($banner['creative_size']);
             $bannerModel->creative_size = $size;
             $bannerModel->creative_type = Banner::type($banner['type']);
+            $bannerModel->text_ad_source =
+                isset($banner['text_ad_source']) ? (new TextAdSource($banner['text_ad_source']))->toArray() : null;
 
             try {
                 switch ($banner['type']) {

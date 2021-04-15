@@ -19,6 +19,7 @@
  */
 
 use Adshares\Adserver\Models\Banner;
+use Adshares\Adserver\Models\BidStrategy;
 use Adshares\Adserver\Models\Campaign;
 use Adshares\Adserver\Models\ConversionDefinition;
 use Adshares\Adserver\Models\User;
@@ -55,6 +56,7 @@ class MockDataCampaignsSeeder extends Seeder
         }
 
         $camp_data = MockDataSeeder::mockDataLoad('campaigns-advertisers.json');
+        $defaultBidStrategy = BidStrategy::first();
 
         DB::beginTransaction();
         foreach ($camp_data as $i => $mockCampaign) {
@@ -65,7 +67,7 @@ class MockDataCampaignsSeeder extends Seeder
             }
 
             foreach ($mockCampaign->campaigns as $cr) {
-                $campaign = $this->createCampaign($user, $cr);
+                $campaign = $this->createCampaign($user, $cr, $defaultBidStrategy);
 
                 if (isset($cr->conversion_definitions)) {
                     foreach ($cr->conversion_definitions as $conversionData) {
@@ -118,12 +120,12 @@ class MockDataCampaignsSeeder extends Seeder
         $this->command->info('Campaigns mock data seeded - for first user and last '.($i).' users');
     }
 
-    private function createCampaign($u, $cr): Campaign
+    private function createCampaign(User $user, $cr, BidStrategy $bidStrategy): Campaign
     {
         $campaign = factory(Campaign::class)->create(
             [
                 'landing_url' => $cr->url,
-                'user_id' => $u->id,
+                'user_id' => $user->id,
                 'name' => $cr->name,
                 'budget' => $cr->budget_per_hour,
                 'max_cpc' => $cr->max_cpc,
@@ -133,6 +135,7 @@ class MockDataCampaignsSeeder extends Seeder
                 'targeting_excludes' => $cr->targeting_excludes ?? null,
                 'classification_status' => $cr->classification_status ?? 0,
                 'classification_tags' => $cr->classification_tags ?? null,
+                'bid_strategy_uuid' => $bidStrategy->uuid,
             ]
         );
 

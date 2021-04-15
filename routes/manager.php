@@ -63,6 +63,8 @@ Route::middleware([Kernel::USER_ACCESS, Kernel::JSON_API])->group(function () {
     Route::delete('campaigns/{campaign_id}', [CampaignsController::class, 'delete'])
         ->name('app.campaigns.delete');
 
+    Route::post('campaigns/banner/text', [CampaignsController::class, 'uploadTextAd'])
+        ->name('app.campaigns.upload.text');
     Route::post('campaigns/banner', [CampaignsController::class, 'upload'])
         ->name('app.campaigns.upload');
 

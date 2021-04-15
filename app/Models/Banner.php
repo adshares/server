@@ -25,6 +25,7 @@ use Adshares\Adserver\Events\GenerateUUID;
 use Adshares\Adserver\Models\Traits\AutomateMutators;
 use Adshares\Adserver\Models\Traits\BinHex;
 use Adshares\Common\Domain\ValueObject\SecureUrl;
+use Adshares\Common\Exception\InvalidArgumentException;
 use Adshares\Supply\Domain\ValueObject\Size;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
@@ -47,6 +48,7 @@ use function in_array;
  * @property Campaign campaign
  * @property BannerClassification[] classifications
  * @property int type
+ * @property array|null text_ad_source
  * @mixin Builder
  */
 class Banner extends Model
@@ -104,6 +106,7 @@ class Banner extends Model
 
     protected $casts = [
         'status' => 'int',
+        'text_ad_source' => 'json',
     ];
 
     protected $traitAutomate = [
@@ -157,7 +160,7 @@ class Banner extends Model
     public static function size(string $size): string
     {
         if (!Size::isValid($size)) {
-            throw new \RuntimeException(sprintf('Wrong image size.'));
+            throw new InvalidArgumentException(sprintf('Invalid banner size (%s).', $size));
         }
 
         return $size;
